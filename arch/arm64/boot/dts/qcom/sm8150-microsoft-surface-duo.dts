@@ -19,10 +19,31 @@
 
 	aliases {
 		serial0 = &uart2;
+		serial1 = &uart13;
 	};
 
 	chosen {
+		bootargs = "earlycon=efifb console=efifb acpi=no pd_ignore_unused clk_ignore_unused efi=novamap";
+
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
 		stdout-path = "serial0:115200n8";
+
+		framebuffer: framebuffer@80600000 {
+			compatible = "simple-framebuffer";
+			reg = <0 0x80600000 0 0x2400000>;
+			width = <1350>;
+			height = <1800>;
+			stride = <(1350 * 4)>;
+			format = "a8r8g8b8";
+			/*
+			 * That's (going to be) a lot of clocks, but it's necessary due
+			 * to unused clk cleanup & no panel driver yet (& no dispcc either)..
+			 */
+			clocks = <&gcc GCC_DISP_HF_AXI_CLK>,
+				 <&gcc GCC_DISP_SF_AXI_CLK>;
+		};
 	};
 
 	vph_pwr: vph-pwr-regulator {
@@ -56,6 +77,13 @@
 			label = "Volume Up";
 			gpios = <&pm8150_gpios 6 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
+		};
+	};
+
+	reserved-memory {
+		cont_splash_mem: memory@80600000 {
+			reg = <0x0 0x80600000 0x0 0x2400000>;
+			no-map;
 		};
 	};
 };
@@ -328,35 +356,87 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 	};
+};
 
-	pm8009-rpmh-regulators {
-		compatible = "qcom,pm8009-rpmh-regulators";
-		qcom,pmic-id = "f";
+&gpu {
+	status = "disabled";
 
-		vdd-s1-supply = <&vph_pwr>;
-		vdd-s2-supply = <&vreg_bob>;
+	zap-shader {
+		memory-region = <&gfxsuc_mem>;
+		firmware-name = "qcom/msft/surface/duo/qcdxkmsuc8150.mbn";
+	};
+};
 
-		vdd-l2-supply = <&vreg_s8c_1p3>;
-		vdd-l5-l6-supply = <&vreg_bob>;
+&mdss {
+	status = "disabled";
+};
 
-		vreg_l2f_1p2: ldo2 {
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
+&dsi0 {
+	status = "disabled";
+	vdda-supply = <&vdda_dsi_0_0p9>;
 
-		vreg_l5f_2p85: ldo5 {
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
+	display0_panel: panel@0 {
+		status = "disabled";
+		
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0>;
 
-		vreg_l6f_2p85: ldo6 {
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-min-microvolt = <2856000>;
-			regulator-max-microvolt = <2856000>;
+		reset-gpios = <&tlmm 5 GPIO_ACTIVE_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel0_reset_pins &panel0_te_pin>;
+
+		port {
+			panel0_in: endpoint {
+				remote-endpoint = <&dsi0_out>;
+			};
 		};
 	};
+};
+
+&dsi0_out {
+	remote-endpoint = <&panel0_in>;
+	data-lanes = <0 1 2 3>;
+};
+
+&dsi0_phy {
+	status = "disabled";
+	vdds-supply = <&vdda_dsi_0_pll_0p9>;
+};
+
+&dsi1 {
+	status = "disabled";
+	vdda-supply = <&vdda_dsi_1_0p9>;
+
+	display1_panel: panel@0 {
+		status = "disabled";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0>;
+
+		reset-gpios = <&tlmm 6 GPIO_ACTIVE_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel1_reset_pins &panel1_te_pin>;
+
+		port {
+			panel1_in: endpoint {
+				remote-endpoint = <&dsi1_out>;
+			};
+		};
+	};
+};
+
+&dsi1_out {
+	remote-endpoint = <&panel1_in>;
+	data-lanes = <0 1 2 3>;
+};
+
+&dsi1_phy {
+	status = "disabled";
+	vdds-supply = <&vdda_dsi_1_pll_0p9>;
 };
 
 &i2c1 {
@@ -448,28 +528,51 @@
 
 &remoteproc_adsp {
 	status = "okay";
-	firmware-name = "qcom/sm8150/microsoft/adsp.mdt";
+	firmware-name = "qcom/msft/surface/duo/qcadsp8150.mbn";
 };
 
 &remoteproc_cdsp {
 	status = "okay";
-	firmware-name = "qcom/sm8150/microsoft/cdsp.mdt";
+	firmware-name = "qcom/msft/surface/duo/qccdsp8150.mbn";
 };
 
 &remoteproc_mpss {
 	status = "okay";
-	firmware-name = "qcom/sm8150/microsoft/modem.mdt";
+	firmware-name = "qcom/msft/surface/duo/qcmpss8150.mbn";
 };
 
 &remoteproc_slpi {
 	status = "okay";
-	firmware-name = "qcom/sm8150/microsoft/slpi.mdt";
+	firmware-name = "qcom/msft/surface/duo/qcslpi8150.mbn";
 };
 
 &pon_resin {
 	status = "okay";
 
 	linux,code = <KEY_VOLUMEDOWN>;
+};
+
+&spi7 {
+	status = "okay";
+	spi-max-frequency = <25000000>;
+
+	hid@0 {
+		compatible = "hid-over-spi";
+
+		reg = <0>;
+		spi-max-frequency = <25000000>;
+
+		interrupts-extended = <&tlmm 3 IRQ_TYPE_EDGE_RISING>;
+
+		pinctrl-names = "active", "sleep", "reset";
+		pinctrl-0 = <&spi7_hid0_active &spi7_hid0_reset_deassert &spi7_hid0_int_bias>;
+		pinctrl-1 = <&spi7_hid0_sleep &spi7_hid0_reset_assert &spi7_hid0_int_unbias>;
+		pinctrl-2 = <&spi7_hid0_active &spi7_hid0_reset_assert &spi7_hid0_int_bias>;
+		
+		vdd-supply = <&vreg_l9a_1p2>;
+
+		hid-descr-addr = <1>;
+	};
 };
 
 &tlmm {
@@ -481,10 +584,165 @@
 		bias-pull-up;
 		input-enable;
 	};
+
+	panel0_reset_pins: panel-reset {
+		mux {
+			pins = "gpio5";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-disable;
+		};
+	};
+
+	panel0_te_pin: panel-te {
+		mux {
+			pins = "gpio8";
+			function = "mdp_vsync";
+			drive-strength = <2>;
+			bias-pull-down;
+			input-enable;
+		};
+	};
+
+	panel1_reset_pins: panel-reset {
+		mux {
+			pins = "gpio6";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-disable;
+		};
+	};
+
+	panel1_te_pin: panel-te {
+		mux {
+			pins = "gpio9";
+			function = "mdp_vsync";
+			drive-strength = <2>;
+			bias-pull-down;
+			input-enable;
+		};
+	};
+
+	spi7_hid0_int_bias: spi7_hid0_int_bias {
+		mux {
+			pins = "gpio3";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio3";
+			bias-pull-down;
+			input-enable;
+		};
+	};
+
+	spi7_hid0_int_unbias: spi7_hid0_int_unbias {
+		mux {
+			pins = "gpio3";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio3";
+			bias-disable;
+			input-enable;
+		};
+	};
+
+	spi7_hid0_active: spi7_hid0_active {
+		mux {
+			pins = "gpio1";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio1";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	spi7_hid0_sleep: spi7_hid0_sleep {
+		mux {
+			pins = "gpio1";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio1";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+	spi7_hid0_reset_deassert: spi7_hid0_reset_deassert {
+		mux {
+			pins = "gpio0";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio0";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	spi7_hid0_reset_assert: spi7_hid0_reset_assert {
+		mux {
+			pins = "gpio0";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio0";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+	uart13_state: uart13-state {
+		cts {
+			pins = "gpio43";
+			function = "qup13";
+			bias-pull-down;
+		};
+
+		rts-tx {
+			pins = "gpio44", "gpio45";
+			function = "qup13";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		rx {
+			pins = "gpio46";
+			function = "qup13";
+			bias-pull-up;
+		};
+	};
 };
 
 &uart2 {
 	status = "okay";
+};
+
+&uart13 {
+	status = "okay";
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart13_state>;
+
+	bluetooth {
+		compatible = "qcom,wcn3998-bt";
+
+		vddio-supply = <&vreg_s4a_1p8>;
+		vddxo-supply = <&vreg_l7a_1p8>;
+		vddrf-supply = <&vreg_l2c_1p3>;
+		vddch0-supply = <&vreg_l11c_3p3>;
+
+		max-speed = <3200000>;
+	};
 };
 
 &ufs_mem_hc {
